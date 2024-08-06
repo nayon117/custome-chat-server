@@ -27,6 +27,8 @@ const ChatMessage = mongoose.model('ChatMessage', {
   timestamp: Date
 });
 
+// ... (previous code remains the same)
+
 io.on('connection', (socket) => {
   const userId = socket.handshake.query.userId;
 
@@ -44,22 +46,42 @@ io.on('connection', (socket) => {
     io.to('admin').emit('newMessage', chatMessage);
   });
 
-  socket.on('adminReply', async ({ userId, message }) => {
-    const chatMessage = new ChatMessage({
-      userId,
-      message,
-      isAdmin: true,
-      timestamp: new Date()
-    });
-    await chatMessage.save();
-    io.to(userId).emit('message', chatMessage);
+
+socket.on('adminReply', async ({ userId, message }) => {
+  const chatMessage = new ChatMessage({
+    userId,
+    message,
+    isAdmin: true,
+    timestamp: new Date()
   });
+  await chatMessage.save();
+  io.to(userId).emit('message', chatMessage);
+  io.to('admin').emit('newMessage', chatMessage); 
+});
 
   socket.on('getHistory', async () => {
     const messages = await ChatMessage.find({ userId }).sort('timestamp');
     socket.emit('history', messages);
   });
+
+  // New event for admin to get all messages
+  socket.on('getAllMessages', async () => {
+    if (socket.handshake.query.userId === 'admin') {
+      const allMessages = await ChatMessage.find().sort('timestamp');
+      const groupedMessages = allMessages.reduce((acc, message) => {
+        if (!acc[message.userId]) {
+          acc[message.userId] = [];
+        }
+        acc[message.userId].push(message);
+        return acc;
+      }, {});
+      socket.emit('allMessages', groupedMessages);
+    }
+  });
 });
+
+
+
 
 app.post('/auth/admin-login', (req, res) => {
   const { email, password } = req.body;
